@@ -2,6 +2,7 @@
 #include "stdio.h"
 #include "sds.h"
 #include "sds_test.h"
+#include "test.h"
 
 /**
  * 打印 sds 头信息
@@ -31,14 +32,12 @@ void sdsEmptyTest() {
  * sdsnewlen 函数测试
  */
 void sdsNewLenTest() {
-    printf("========= sdsNewLenTest start =========\n");
     sds string = sdsnewlen("redis", 10);
-    // free 是 0, 因为用 \0 填充了
-    printSdsHdrInfo(string);
-    printf("========= sdsNewLenTest end =========\n\n");
+    testCond("sdsnewlen(\"redis\", 10)", sdscmp(string, "redis") != 0);
 }
 
 int main() {
-    sdsEmptyTest();
+    // sdsEmptyTest();
     sdsNewLenTest();
+    printTestReport();
 }
