@@ -102,3 +102,5 @@ target_link_libraries(redis-cli
                       PRIVATE m
                       PRIVATE linenoise
                       PRIVATE hiredis)
+
+add_subdirectory(test)
