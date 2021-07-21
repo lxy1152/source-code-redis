@@ -24,10 +24,10 @@ void printSdsHdrInfo(sds string) {
 void sdsNewLenTest() {
     char *testName = "sdsNewLenTest";
     sds string = sdsnewlen("redis", 10);
-    assertEqual(testName, "compare len", sdslen(string), 10);
-    assertEqual(testName, "compare free", sdsavail(string), 0);
-    assertEqual(testName, "compare sds using strcmp", strcmp(string, "redis"), 0);
-    assertNotEqual(testName, "compare sds using sdscmp", sdscmp(string, "redis"), 0);
+    assertEqualForNumber(testName, "compare len", sdslen(string), 10);
+    assertEqualForNumber(testName, "compare free", sdsavail(string), 0);
+    assertEqualForNumber(testName, "compare sds using strcmp", strcmp(string, "redis"), 0);
+    assertNotEqualForNumber(testName, "compare sds using sdscmp", sdscmp(string, "redis"), 0);
 }
 
 /**
@@ -36,9 +36,9 @@ void sdsNewLenTest() {
 void sdsEmptyTest() {
     char *testName = "sdsEmptyTest";
     sds string = sdsempty();
-    assertEqual(testName, "compare len", sdslen(string), 0);
-    assertEqual(testName, "compare free", sdsavail(string), 0);
-    assertEqual(testName, "compare sds using strcmp", strcmp(string, ""), 0);
+    assertEqualForNumber(testName, "compare len", sdslen(string), 0);
+    assertEqualForNumber(testName, "compare free", sdsavail(string), 0);
+    assertEqualForNumber(testName, "compare sds using strcmp", strcmp(string, ""), 0);
 }
 
 /**
@@ -47,9 +47,9 @@ void sdsEmptyTest() {
 void sdsNewTest() {
     char *testName = "sdsNewTest";
     sds string = sdsnew("redis");
-    assertEqual(testName, "compare len", sdslen(string), 5);
-    assertEqual(testName, "compare free", sdsavail(string), 0);
-    assertEqual(testName, "compare sds using strcmp", strcmp(string, "redis"), 0);
+    assertEqualForNumber(testName, "compare len", sdslen(string), 5);
+    assertEqualForNumber(testName, "compare free", sdsavail(string), 0);
+    assertEqualForNumber(testName, "compare sds using strcmp", strcmp(string, "redis"), 0);
 }
 
 /**
@@ -59,7 +59,7 @@ void sdsDupTest() {
     char *testName = "sdsDupTest";
     sds string = sdsnew("redis");
     sds copy = sdsdup(string);
-    assertNotEqual(testName, "compare sds's copy'", (int *) copy, (int *) string);
+    assertNotEqualForString(testName, "compare sds's copy'", copy, string);
 }
 
 /**
@@ -70,10 +70,10 @@ void sdsUpdateLenTest() {
     sds string = sdsnew("redis");
     // 手动修改 buf 数组, 此时 len 没有更新所有会输出 5
     string[2] = '\0';
-    assertEqual(testName, "compare len before update", sdslen(string), 5);
+    assertEqualForNumber(testName, "compare len before update", sdslen(string), 5);
     // 更新 len 和 free 后, 将输出 2
     sdsupdatelen(string);
-    assertEqual(testName, "compare len after update", sdslen(string), 2);
+    assertEqualForNumber(testName, "compare len after update", sdslen(string), 2);
 }
 
 /**
@@ -83,15 +83,21 @@ void sdsClearTest() {
     char *testName = "sdsClearTest";
     sds string = sdsnew("redis");
     sdsclear(string);
-    assertEqual(testName, "compare len", sdslen(string), 0);
-    assertEqual(testName, "compare free", sdsavail(string), 5);
+    assertEqualForNumber(testName, "compare len", sdslen(string), 0);
+    assertEqualForNumber(testName, "compare free", sdsavail(string), 5);
 
-    struct sdshdr *sh = (void *) (string - sizeof(struct sdshdr));
-    char expected[5] = "r\0dis";
-    for (int i = 0; i < sdsavail(string); ++i) {
-        char *description = "";
+    struct sdshdr *sh = (void *) (string - (sizeof(struct sdshdr)));
+    char expected[5] = "\0edis";
+    size_t free = sh->free;
+    int digit = 0;
+    while (free != 0) {
+        digit++;
+        free = free / 10;
+    }
+    for (int i = 0; i < sh->free; ++i) {
+        char description[13 + digit];
         sprintf(description, "compare buf[%d]", i);
-        assertEqual(testName, description, sh->buf[0], expected[i]);
+        assertEqualForNumber(testName, description, sh->buf[i], expected[i]);
     }
 }
 

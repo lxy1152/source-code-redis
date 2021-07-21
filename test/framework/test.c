@@ -7,6 +7,7 @@
  * 对某个测试用例 testName 判断条件 expression 是否成立
  *
  * @param testName 测试用例名称
+ * @param description 描述信息
  * @param expression 判断条件
  */
 void testInCondition(char *testName, char *description, int expression) {
@@ -25,28 +26,56 @@ void testInCondition(char *testName, char *description, int expression) {
     } else {
         preTestFailedNumber++;
         printf(COLOR_RED"FAILED\n"COLOR_NONE);
+        printTestReport();
+        exit(1);
     }
 }
 
 /**
- * 判断给定的两个值是否相同
+ * 判断给定的两个数值是否相同
  *
  * @param testName 用例名称
- * @param result 函数返回结果
+ * @param description 描述信息
+ * @param result 结果
  * @param expected 预期结果
  */
-void assertEqual(char *testName, char *description, size_t result, size_t expected) {
+void assertEqualForNumber(char *testName, char *description, size_t result, size_t expected) {
     testInCondition(testName, description, result == expected);
 }
 
 /**
- * 判断给定的两个值是否不同
+ * 判断给定的两个数值是否不同
  *
  * @param testName 用例名称
- * @param result 函数返回结果
+ * @param description 描述信息
+ * @param result 结果
  * @param expected 预期结果
  */
-void assertNotEqual(char *testName, char *description, size_t result, size_t expected) {
+void assertNotEqualForNumber(char *testName, char *description, size_t result, size_t expected) {
+    testInCondition(testName, description, result != expected);
+}
+
+/**
+ * 判断给定的两个 char 型指针是否相同
+ *
+ * @param testName 用例名称
+ * @param description 描述信息
+ * @param result 结果
+ * @param expected 预期结果
+ */
+void assertEqualForString(char *testName, char * description, const char *result, const char *expected) {
+    testInCondition(testName, description, result != expected);
+}
+
+/**
+ * 判断给定的两个 char 型指针是否不同
+ *
+ * @param testName 用例名称
+ * @param description 描述信息
+ * @param result 结果
+ * @param expected 预期结果
+ */
+void assertNotEqualForString(char *testName, char *description, char *result, char *expected) {
     testInCondition(testName, description, result != expected);
 }
 
