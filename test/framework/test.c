@@ -54,6 +54,10 @@ void assertNotEqual(char *testName, char *description, size_t result, size_t exp
  * 打印测试结果
  */
 void printTestReport() {
+    if (preTestFailedNumber > 0) {
+        totalFailedTestsNumber++;
+        preTestFailedNumber = 0;
+    }
     printf("\n%d tests, %d passed, %d failed\n",
            totalTestNumber,
            totalTestNumber - totalFailedTestsNumber,
