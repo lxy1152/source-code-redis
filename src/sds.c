@@ -166,57 +166,76 @@ void sdsclear(sds s) {
     sh->buf[0] = '\0';
 }
 
-/* Enlarge the free space at the end of the sds string so that the caller
- * is sure that after calling this function can overwrite up to addlen
- * bytes after the end of the string, plus one more byte for nul term.
+/**
+ * 对 sds 扩容, 保证在调用这个函数后至少有 addlen + 1 个可用空间.<br>
+ * 注意:
+ * - 多一个 1 是因为结尾要保存 '\0'
+ * - 这个方法不会修改 len, 只是修改 free
  *
- * Note: this does not change the *length* of the sds string as returned
- * by sdslen(), but only the free buffer space we have. */
+ * @param s sds
+ * @param addlen 要添加的长度
+ * @return 扩容后的 sds
+ */
 sds sdsMakeRoomFor(sds s, size_t addlen) {
-    struct sdshdr *sh, *newsh;
-    size_t free = sdsavail(s);
-    size_t len, newlen;
+    // 如果空闲空间比指定的长度要大, 那就没必要扩容, 直接返回
+    if (sdsavail(s) >= addlen) {
+        return s;
+    }
 
-    if (free >= addlen) return s;
-    len = sdslen(s);
-    sh = (void *) (s - (sizeof(struct sdshdr)));
-    newlen = (len + addlen);
-    if (newlen < SDS_MAX_PREALLOC)
+    // 当前 sds 的长度
+    size_t len = sdslen(s);
+    // 新的 sds 长度
+    size_t newlen = len + addlen;
+
+    // 小于 1M 时, 每次将空间扩大为当前的 2 倍
+    // 大于等于 1M 时, 每次增加 1M 的空间
+    if (newlen < SDS_MAX_PREALLOC) {
         newlen *= 2;
-    else
+    } else {
         newlen += SDS_MAX_PREALLOC;
-    newsh = zrealloc(sh, sizeof(struct sdshdr) + newlen + 1);
-    if (newsh == NULL) return NULL;
+    }
 
+    // 原始头信息
+    struct sdshdr *sh = (void *) (s - (sizeof(struct sdshdr)));
+    // 重新分配内存
+    struct sdshdr *newsh = zrealloc(sh, sizeof(struct sdshdr) + newlen + 1);
+    // 如果分配失败则返回 NULL
+    if (newsh == NULL) {
+        return NULL;
+    }
+
+    // 更新新的头信息中的空闲长度
     newsh->free = newlen - len;
+    // 返回 buf 数组
     return newsh->buf;
 }
 
-/* Reallocate the sds string so that it has no free space at the end. The
- * contained string remains not altered, but next concatenation operations
- * will require a reallocation.
+/**
+ * 回收 sds 中的空闲区域, 并将 free 置为 0, 在执行这个操作后如果再修改 sds 就需要重新分
+ * 配内存.
  *
- * After the call, the passed sds string is no longer valid and all the
- * references must be substituted with the new pointer returned by the call. */
+ * @param s sds
+ * @return 回收空闲区域后的 sds
+ */
 sds sdsRemoveFreeSpace(sds s) {
-    struct sdshdr *sh;
-
-    sh = (void *) (s - (sizeof(struct sdshdr)));
+    struct sdshdr *sh = (void *) (s - (sizeof(struct sdshdr)));
     sh = zrealloc(sh, sizeof(struct sdshdr) + sh->len + 1);
     sh->free = 0;
     return sh->buf;
 }
 
-/* Return the total size of the allocation of the specifed sds string,
- * including:
- * 1) The sds header before the pointer.
- * 2) The string.
- * 3) The free buffer at the end if any.
- * 4) The implicit null term.
+/**
+ * 返回 sds 占用的内存大小, 包括:
+ * - 头信息
+ * - 已使用空间
+ * - 未使用空间
+ * - 结尾的 '\0'
+ *
+ * @param s sds
+ * @return 分配的内存大小
  */
 size_t sdsAllocSize(sds s) {
     struct sdshdr *sh = (void *) (s - (sizeof(struct sdshdr)));
-
     return sizeof(*sh) + sh->len + sh->free + 1;
 }
 
