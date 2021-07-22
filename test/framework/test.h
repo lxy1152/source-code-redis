@@ -4,21 +4,25 @@
 #define COLOR_NONE "\033[0m"
 #define COLOR_RED "\033[0;31m"
 #define COLOR_BLUE "\033[1;34m"
+#define COLOR_YELLOW "\033[1;33m"
 
 /**
- * 记录测试失败的用例个数
+ * 记录测试失败的总个数
  */
 static int totalFailedTestsNumber = 0;
 
+/**
+ * 某个测试的测试用例失败的个数
+ */
 static int preTestFailedNumber = 0;
 
 /**
- * 记录总测试用例个数
+ * 记录总测试个数
  */
 static int totalTestNumber = 0;
 
 /**
- * 当前测试用例的名称
+ * 当前测试的名称
  */
 static char *currentTestName = "";
 

@@ -9,13 +9,15 @@
  *
  * @param string 一个指向 buf 数组的指针
  */
-void printSdsHdrInfo(sds string) {
-    struct sdshdr *sh = (void *) (string - (sizeof(struct sdshdr)));
-    printf("--------- output sdshdr info start ---------\n");
-    printf("len: %u\n", sh->len);
-    printf("free: %u\n", sh->free);
-    printf("buf: %s\n", sh->buf);
-    printf("--------- output sdshdr info end ---------\n");
+void printSdsHdrInfo(sds string, char *description) {
+    if (printFlag) {
+        struct sdshdr *sh = (void *) (string - (sizeof(struct sdshdr)));
+        printf(COLOR_YELLOW"  - print sdshdr info before %s: len: %u, free: %u, buf: %s\n"COLOR_NONE,
+               description,
+               sh->len,
+               sh->free,
+               sh->buf);
+    }
 }
 
 /**
@@ -101,14 +103,68 @@ void sdsClearTest() {
     }
 }
 
+/**
+ * sdsMakeRoomFor 函数测试
+ */
+void sdsMakeRoomForTest() {
+    char *testName = "sdsMakeRoomForTest";
+    sds string = sdsnew("redis");
+    assertEqualForNumber(testName, "compare len before using makeRoomFor", sdslen(string), 5);
+    assertEqualForNumber(testName, "compare free before using makeRoomFor", sdsavail(string), 0);
+
+    // 1M 内扩容
+    string = sdsMakeRoomFor(string, 50);
+    printSdsHdrInfo(string, "compare data after using makeRoomFor(50)");
+    // 扩容不会修改 len, 所以已使用长度是不变的
+    assertEqualForNumber(testName, "compare len after using makeRoomFor(50)", sdslen(string), 5);
+    // 空闲空间是根据新长度重新计算出来的
+    // 因为长度小于 1M, 所以是 2 倍扩容
+    assertEqualForNumber(testName, "compare free after using makeRoomFor(50)", sdsavail(string), 105);
+
+    // 大于等于 1M 时扩容
+    string = sdsMakeRoomFor(string, 1048571);
+    printSdsHdrInfo(string, "compare data after using makeRoomFor(1048571)");
+    assertEqualForNumber(testName, "compare len after using makeRoomFor(1048571)", sdslen(string), 5);
+    // newlen 走了大于等于 1M 的分支, 所以 newlen 加上了 1048576
+    assertEqualForNumber(testName, "compare free after using makeRoomFor(1048571)", sdsavail(string), 2097147);
+}
+
+/**
+ * sdsRemoveFreeSpace 函数测试
+ */
+void sdsRemoveFreeSpaceTest() {
+    char *testName = "sdsRemoveFreeSpaceTest";
+    sds string = sdsnewlen("redis", 10);
+    sdsupdatelen(string);
+    assertEqualForNumber(testName, "compare free before using sdsRemoveFreeSpace", sdsavail(string), 5);
+    string = sdsRemoveFreeSpace(string);
+    assertEqualForNumber(testName, "compare free after using sdsRemoveFreeSpace", sdsavail(string), 0);
+}
+
+/**
+ * sdsAllocSize 函数测试
+ */
+void sdsAllocSizeTest() {
+    char *testName = "sdsRemoveFreeSpaceTest";
+    sds string = sdsnewlen("redis", 10);
+    sdsupdatelen(string);
+    assertEqualForNumber(testName, "compare allocSize", sdsAllocSize(string), 19);
+}
+
 int main() {
-    // 测试用例
+    // 设置为允许输出调试信息
+    setPrintFlag(1);
+
+    // 要执行的测试
     sdsEmptyTest();
     sdsNewLenTest();
     sdsUpdateLenTest();
     sdsNewTest();
     sdsDupTest();
     sdsClearTest();
+    sdsMakeRoomForTest();
+    sdsRemoveFreeSpaceTest();
+    sdsAllocSizeTest();
 
     // 输出测试结果
     printTestReport();
