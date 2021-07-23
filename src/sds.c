@@ -239,119 +239,171 @@ size_t sdsAllocSize(sds s) {
     return sizeof(*sh) + sh->len + sh->free + 1;
 }
 
-/* Increment the sds length and decrements the left free space at the
- * end of the string according to 'incr'. Also set the null term
- * in the new end of the string.
- *
- * This function is used in order to fix the string length after the
- * user calls sdsMakeRoomFor(), writes something after the end of
- * the current string, and finally needs to set the new length.
- *
- * Note: it is possible to use a negative increment in order to
- * right-trim the string.
- *
- * Usage example:
- *
- * Using sdsIncrLen() and sdsMakeRoomFor() it is possible to mount the
- * following schema, to cat bytes coming from the kernel to the end of an
- * sds string without copying into an intermediate buffer:
- *
+/**
+ * 增加 sds 的长度并减少空闲长度并减少空闲长度. 新的 sds 的末尾会有一个 '\0'.
+ * 一般来说首先会调用 sdsMakeRoomFor 函数进行扩容, 扩容后会有一些写操作, 在
+ * 这些操作通过这个函数可以修正因为写操作导致的长度不一致. 看一下下面的例子,
+ * 这个例子是直接操作内存将字符串放到了 buf 数组的后面, 所以在操作结束后需要修
+ * 正长度:
+ * @code
  * oldlen = sdslen(s);
  * s = sdsMakeRoomFor(s, BUFFER_SIZE);
  * nread = read(fd, s+oldlen, BUFFER_SIZE);
  * ... check for nread <= 0 and handle it ...
  * sdsIncrLen(s, nread);
+ * @endcode
+ * 注意:
+ * - incr 可以为负数, 如果是负数将减少 sds 的长度
+ *
+ * @param s sds
+ * @param incr 要增加/减少的长度
  */
 void sdsIncrLen(sds s, int incr) {
+    // 当前 sds 的头信息
     struct sdshdr *sh = (void *) (s - (sizeof(struct sdshdr)));
 
-    if (incr >= 0)
+    // 如果长度大于等于 0, 证明是增加长度, 那么需要比较 free
+    // 如果小于 0, 证明是减少长度, 那么需要比较 len
+    if (incr >= 0) {
         assert(sh->free >= (unsigned int) incr);
-    else
+    } else {
         assert(sh->len >= (unsigned int) (-incr));
+    }
+
+    // 增加/减少长度
     sh->len += incr;
+    // 增加/减少空闲长度
     sh->free -= incr;
+    // 最后一位置位 \0
     s[sh->len] = '\0';
 }
 
-/* Grow the sds to have the specified length. Bytes that were not part of
- * the original length of the sds will be set to zero.
+/**
+ * 将 sds 扩展到指定的长度, 新分配的内存将设置为 0. 如果指定的长度比当前长度小, 那么
+ * 什么操作也不会进行.
  *
- * if the specified length is smaller than the current length, no operation
- * is performed. */
+ * @param s sds
+ * @param len 长度
+ * @return 增加后的 sds
+ */
 sds sdsgrowzero(sds s, size_t len) {
+    // 当前的头信息
     struct sdshdr *sh = (void *) (s - (sizeof(struct sdshdr)));
-    size_t totlen, curlen = sh->len;
-
-    if (len <= curlen) return s;
+    // 当前已使用长度
+    size_t curlen = sh->len;
+    // 如果指定的长度比当前长度要小, 那就没必要扩容
+    if (len <= curlen) {
+        return s;
+    }
+    // 扩容
     s = sdsMakeRoomFor(s, len - curlen);
-    if (s == NULL) return NULL;
+    if (s == NULL) {
+        return NULL;
+    }
 
-    /* Make sure added region doesn't contain garbage */
+    // 重新计算指针
     sh = (void *) (s - (sizeof(struct sdshdr)));
-    memset(s + curlen, 0, (len - curlen + 1)); /* also set trailing \0 byte */
-    totlen = sh->len + sh->free;
+    // 设置为 0
+    memset(s + curlen, 0, (len - curlen + 1));
+    // 此时计算的总长度是不包含后面的 0 的
+    size_t totlen = sh->len + sh->free;
+    // 更新已使用长度
     sh->len = len;
+    // 更新空闲长度
     sh->free = totlen - sh->len;
     return s;
 }
 
-/* Append the specified binary-safe string pointed by 't' of 'len' bytes to the
- * end of the specified sds string 's'.
+/**
+ * 将指定的二进制安全的字符串的前 len 字节追加到 sds 的末尾.
  *
- * After the call, the passed sds string is no longer valid and all the
- * references must be substituted with the new pointer returned by the call. */
+ * @param s sds
+ * @param t 一个二进制安全的字符串
+ * @param len 指定的长度
+ * @return 追加后的字符串
+ */
 sds sdscatlen(sds s, const void *t, size_t len) {
-    struct sdshdr *sh;
-    size_t curlen = sdslen(s);
-
+    // 扩容
     s = sdsMakeRoomFor(s, len);
-    if (s == NULL) return NULL;
-    sh = (void *) (s - (sizeof(struct sdshdr)));
+    if (s == NULL) {
+        return NULL;
+    }
+
+    // 头信息
+    struct sdshdr *sh = (void *) (s - (sizeof(struct sdshdr)));
+    // 当前长度
+    size_t curlen = sdslen(s);
+    // 复制字符串
     memcpy(s + curlen, t, len);
+    // 更新已使用长度
     sh->len = curlen + len;
+    // 更新空闲长度
     sh->free = sh->free - len;
+    // 设置末尾的 \0
     s[curlen + len] = '\0';
     return s;
 }
 
-/* Append the specified null termianted C string to the sds string 's'.
+/**
+ * 将指定的字符串追加到 sds 的末尾
  *
- * After the call, the passed sds string is no longer valid and all the
- * references must be substituted with the new pointer returned by the call. */
+ * @param s sds
+ * @param t 要追加的字符串
+ * @return 追加后的 sds
+ */
 sds sdscat(sds s, const char *t) {
     return sdscatlen(s, t, strlen(t));
 }
 
-/* Append the specified sds 't' to the existing sds 's'.
- *
- * After the call, the modified sds string is no longer valid and all the
- * references must be substituted with the new pointer returned by the call. */
+/**
+ * 将一个指定 sds 追加到另一个 sds 的末尾
+ * @param s 被追加的 sds
+ * @param t 一个指定要追加的 sds
+ * @return 追加后的 sds
+ */
 sds sdscatsds(sds s, const sds t) {
     return sdscatlen(s, t, sdslen(t));
 }
 
-/* Destructively modify the sds string 's' to hold the specified binary
- * safe string pointed by 't' of length 'len' bytes. */
+/**
+ * 将指定的字符串的前 len 字节复制到 sds 中.
+ *
+ * @param s sds
+ * @param t 指定的字符串
+ * @param len 长度
+ * @return 复制后的字符串
+ */
 sds sdscpylen(sds s, const char *t, size_t len) {
+    // 头信息
     struct sdshdr *sh = (void *) (s - (sizeof(struct sdshdr)));
+    // 总长度
     size_t totlen = sh->free + sh->len;
-
+    // 如果长度不够需要先扩容
     if (totlen < len) {
         s = sdsMakeRoomFor(s, len - sh->len);
-        if (s == NULL) return NULL;
+        if (s == NULL) {
+            return NULL;
+        }
+        // 扩容后重新计算指针与总长度
         sh = (void *) (s - (sizeof(struct sdshdr)));
         totlen = sh->free + sh->len;
     }
+    // 复制字符串
     memcpy(s, t, len);
+    // 填充头信息
     s[len] = '\0';
     sh->len = len;
     sh->free = totlen - len;
     return s;
 }
 
-/* Like sdscpylen() but 't' must be a null-termined string so that the length
- * of the string is obtained with strlen(). */
+/**
+ * 将给定的字符串复制到 sds 中.
+ *
+ * @param s sds
+ * @param t 指定的字符串
+ * @return 复制后的 sds
+ */
 sds sdscpy(sds s, const char *t) {
     return sdscpylen(s, t, strlen(t));
 }
