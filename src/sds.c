@@ -84,7 +84,7 @@ sds sdsnewlen(const void *init, size_t initlen) {
 }
 
 /**
- * 创建一个空的 sds, 但是最后会有一个 '\0'
+ * 创建一个空的 sds, 但是最后会有一个 '\0'.
  *
  * @return 一个空的 sds
  */
@@ -93,7 +93,7 @@ sds sdsempty(void) {
 }
 
 /**
- * 根据指定的字符串创建一个 sds
+ * 根据指定的字符串创建一个 sds.
  *
  * @param init 初始字符串
  * @return 创建好的 sds
@@ -104,7 +104,7 @@ sds sdsnew(const char *init) {
 }
 
 /**
- * 将给定的 sds 复制, 得到一个新的 sds
+ * 将给定的 sds 复制, 得到一个新的 sds.
  *
  * @param s sds
  * @return 复制后得到的 sds
@@ -114,7 +114,7 @@ sds sdsdup(const sds s) {
 }
 
 /**
- * 释放指定的 sds
+ * 释放指定的 sds.
  *
  * @param s sds
  */
@@ -345,7 +345,7 @@ sds sdscatlen(sds s, const void *t, size_t len) {
 }
 
 /**
- * 将指定的字符串追加到 sds 的末尾
+ * 将指定的字符串追加到 sds 的末尾.
  *
  * @param s sds
  * @param t 要追加的字符串
@@ -356,7 +356,8 @@ sds sdscat(sds s, const char *t) {
 }
 
 /**
- * 将一个指定 sds 追加到另一个 sds 的末尾
+ * 将一个指定 sds 追加到另一个 sds 的末尾.
+ *
  * @param s 被追加的 sds
  * @param t 一个指定要追加的 sds
  * @return 追加后的 sds
@@ -408,77 +409,95 @@ sds sdscpy(sds s, const char *t) {
     return sdscpylen(s, t, strlen(t));
 }
 
-/* Helper for sdscatlonglong() doing the actual number -> string
- * conversion. 's' must point to a string with room for at least
- * SDS_LLSTR_SIZE bytes.
- *
- * The function returns the length of the null-terminated string
- * representation stored at 's'. */
+/**
+ * 帮助实现数字到字符串的转换, s 的长度应该至少有 21 字节.
+ */
 #define SDS_LLSTR_SIZE 21
 
-int sdsll2str(char *s, long long value) {
-    char *p, aux;
-    unsigned long long v;
-    size_t l;
-
-    /* Generate the string representation, this method produces
-     * an reversed string. */
-    v = (value < 0) ? -value : value;
-    p = s;
-    do {
-        *p++ = '0' + (v % 10);
-        v /= 10;
-    } while (v);
-    if (value < 0) *p++ = '-';
-
-    /* Compute length and add null term. */
-    l = p - s;
-    *p = '\0';
-
-    /* Reverse the string. */
-    p--;
-    while (s < p) {
-        aux = *s;
-        *s = *p;
-        *p = aux;
-        s++;
-        p--;
-    }
-    return l;
-}
-
-/* Identical sdsll2str(), but for unsigned long long type. */
-int sdsull2str(char *s, unsigned long long v) {
-    char *p, aux;
-    size_t l;
-
-    /* Generate the string representation, this method produces
-     * an reversed string. */
-    p = s;
-    do {
-        *p++ = '0' + (v % 10);
-        v /= 10;
-    } while (v);
-
-    /* Compute length and add null term. */
-    l = p - s;
-    *p = '\0';
-
-    /* Reverse the string. */
-    p--;
-    while (s < p) {
-        aux = *s;
-        *s = *p;
-        *p = aux;
-        s++;
-        p--;
-    }
-    return l;
-}
-
-/* Create an sds string from a long long value. It is much faster than:
+/**
+ * 将指定的 long long 类型的 value 转换为字符串并返回这
+ * 个字符串的长度(不包含结尾的 \0).
  *
- * sdscatprintf(sdsempty(),"%lld\n", value);
+ * @param s 字符串指针
+ * @param value 要转换的数字
+ * @return 转换后字符串的长度
+ */
+int sdsll2str(char *s, long long value) {
+    // 先统一设置为正数
+    unsigned long long v = (value < 0) ? -value : value;
+
+    // 逆序添加数字的每一位
+    char *p = s;
+    do {
+        *p++ = '0' + (v % 10);
+        v /= 10;
+    } while (v);
+
+    // 如果是负数则加上负号
+    if (value < 0) {
+        *p++ = '-';
+    }
+
+    // 计算长度并设置 \0
+    size_t l = p - s;
+    *p = '\0';
+
+    // 通过两个指针交换字符的方式来反转字符串
+    char *aux;
+    p--;
+    while (s < p) {
+        aux = *s;
+        *s = *p;
+        *p = aux;
+        s++;
+        p--;
+    }
+
+    // 返回字符串的长度
+    return l;
+}
+
+/**
+ * 将指定的 unsigned long long 类型的 v 转换为字符串并返回这个字符串的
+ * 长度(不包含结尾的 \0). 与上一个函数的区别是 v 的类型.
+ *
+ * @param s 字符串指针
+ * @param value 要转换的数字
+ * @return 转换后字符串的长度
+ */
+int sdsull2str(char *s, unsigned long long v) {
+    // 逆序保存数字
+    char *p = s;
+    do {
+        *p++ = '0' + (v % 10);
+        v /= 10;
+    } while (v);
+
+    // 计算长度并设置 \0
+    size_t l = p - s;
+    *p = '\0';
+
+    // 通过两个指针反转字符串
+    char *aux;
+    p--;
+    while (s < p) {
+        aux = *s;
+        *s = *p;
+        *p = aux;
+        s++;
+        p--;
+    }
+
+    // 返回长度
+    return l;
+}
+
+/**
+ * 根据指定的 long long 类型的 value 创建一个新的 sds. 这个函数比
+ * sdscatprintf() 函数要更快.
+ *
+ * @param value 要转换的数字
+ * @return 创建好的 sds
  */
 sds sdsfromlonglong(long long value) {
     char buf[SDS_LLSTR_SIZE];
