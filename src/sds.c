@@ -506,164 +506,257 @@ sds sdsfromlonglong(long long value) {
     return sdsnewlen(buf, len);
 }
 
-/* Like sdscatprintf() but gets va_list instead of being variadic. */
+/**
+ * 根据指定的格式 fmt 在已有 sds 后面拼接并生成新的 sds.
+ *
+ * @param s 已有的 sds
+ * @param fmt 一个格式
+ * @param ap 参数列表
+ * @return 拼接后的 sds
+ */
 sds sdscatvprintf(sds s, const char *fmt, va_list ap) {
-    va_list cpy;
-    char staticbuf[1024], *buf = staticbuf, *t;
+    // 在栈上建立一个长度是 1024 的 buffer
+    char staticbuf[1024];
+    char *buf = staticbuf;
+    char *t;
+
+    // 估算一下可能的长度
+    // 假设是 2 倍
     size_t buflen = strlen(fmt) * 2;
 
-    /* We try to start using a static buffer for speed.
-     * If not possible we revert to heap allocation. */
+    // 如果栈上分配的长度不够, 那么在堆上重新分配内存
+    // 如果长度够则指定长度是 1024
     if (buflen > sizeof(staticbuf)) {
         buf = zmalloc(buflen);
-        if (buf == NULL) return NULL;
+        if (buf == NULL) {
+            return NULL;
+        }
     } else {
         buflen = sizeof(staticbuf);
     }
 
-    /* Try with buffers two times bigger every time we fail to
-     * fit the string in the current buffer size. */
+    // 在 buf 中保存格式化字符串
+    va_list cpy;
     while (1) {
+        // 在末尾标记一个 \0
         buf[buflen - 2] = '\0';
+
+        // 根据给定的格式 fmt 对 cpy 进行格式化
+        // 将前 buflen 长度的内容写入 buf 中
         va_copy(cpy, ap);
         vsnprintf(buf, buflen, fmt, cpy);
         va_end(cpy);
+
+        // 如果提前标记的 \0 没有了
+        // 也就是说长度不够
+        // 那么将长度扩大两倍并重新分配内存
         if (buf[buflen - 2] != '\0') {
-            if (buf != staticbuf) zfree(buf);
+            if (buf != staticbuf) {
+                zfree(buf);
+            }
             buflen *= 2;
             buf = zmalloc(buflen);
-            if (buf == NULL) return NULL;
+            if (buf == NULL) {
+                return NULL;
+            }
             continue;
         }
+
+        // 当写入成功时退出循环
         break;
     }
 
-    /* Finally concat the obtained string to the SDS string and return it. */
+    // 将 buf 拼接到 sds 的末尾并返回
     t = sdscat(s, buf);
-    if (buf != staticbuf) zfree(buf);
+    if (buf != staticbuf) {
+        zfree(buf);
+    }
     return t;
 }
 
-/* Append to the sds string 's' a string obtained using printf-alike format
- * specifier.
- *
- * After the call, the modified sds string is no longer valid and all the
- * references must be substituted with the new pointer returned by the call.
- *
- * Example:
- *
+/**
+ * 将一个 printf 格式的字符串拼接到 sds 的末尾. 在调用这个函数后, 原指针将变为无效的,
+ * 需要将引用指向返回值. 举个例子:
+ * @code
  * s = sdsnew("Sum is: ");
  * s = sdscatprintf(s,"%d+%d = %d",a,b,a+b).
- *
- * Often you need to create a string from scratch with the printf-alike
- * format. When this is the need, just use sdsempty() as the target string:
- *
+ * @endcode
+ * 但有时候仅仅是希望通过这个函数来创建一个 printf 格式的 sds, 而不是在已有的 sds 的
+ * 末尾进行拼接. 对于这种情况, 可以直接传入 sdsempty(), 比如:
+ * @code
  * s = sdscatprintf(sdsempty(), "... your format ...", args);
+ * @endcode
+ *
+ * @param s sds
+ * @param fmt 一个格式
+ * @param ... 参数列表
+ * @return 拼接后的 sds
  */
 sds sdscatprintf(sds s, const char *fmt, ...) {
-    va_list ap;
+    // 保存结果
     char *t;
+
+    // 将参数列表通过 va_list 保存并调用 sdscatvprintf()
+    // 函数进行拼接
+    va_list ap;
     va_start(ap, fmt);
     t = sdscatvprintf(s, fmt, ap);
     va_end(ap);
+
     return t;
 }
 
-/* This function is similar to sdscatprintf, but much faster as it does
- * not rely on sprintf() family functions implemented by the libc that
- * are often very slow. Moreover directly handling the sds string as
- * new data is concatenated provides a performance improvement.
- *
- * However this function only handles an incompatible subset of printf-alike
- * format specifiers:
- *
- * %s - C String
- * %S - SDS string
- * %i - signed int
- * %I - 64 bit signed integer (long long, int64_t)
- * %u - unsigned int
- * %U - 64 bit unsigned integer (unsigned long long, uint64_t)
- * %% - Verbatim "%" character.
+/**
+ * 这个函数与上面的 sdscatprintf() 函数类似, 由于是直接操作 sds 所以它的处理速度
+ * 更快, 因为不再依赖于 sprintf() 相关的函数(这些函数通常都很慢). 但是这个函数只能
+ * 处理以下格式符:
+ * - %s: C 字符串
+ * - %S: SDS 字符串
+ * - %i: 有符号整型
+ * - %I: 有符号 64 位整型(long long, uint64_t)
+ * - %u: 无符号 整型
+ * - %U: 无符号 64 位整型(unsigned long long, uint64_t)
+ * - %%: 符号 %
+ * @param s
+ * @param fmt
+ * @param ...
+ * @return 按照指定格式拼接生成的 sds
  */
 sds sdscatfmt(sds s, char const *fmt, ...) {
+    // 头信息
     struct sdshdr *sh = (void *) (s - (sizeof(struct sdshdr)));
+    // 初始长度
     size_t initlen = sdslen(s);
+    // 指向 fmt 的指针
     const char *f = fmt;
-    int i;
+    // 可变参数列表
     va_list ap;
 
     va_start(ap, fmt);
-    f = fmt;    /* Next format specifier byte to process. */
-    i = initlen; /* Position of the next byte to write to dest str. */
-    while (*f) {
-        char next, *str;
-        unsigned int l;
-        long long num;
-        unsigned long long unum;
+    // 下一个需要处理的格式符
+    f = fmt;
+    // 字符的起始位置
+    int i = initlen;
 
-        /* Make sure there is always space for at least 1 char. */
+    // 遍历 fmt
+    while (*f) {
+        // 确保至少有一个字节的可用空间
         if (sh->free == 0) {
             s = sdsMakeRoomFor(s, 1);
             sh = (void *) (s - (sizeof(struct sdshdr)));
         }
 
+        // 保存 % 后面的那个字符
+        char next;
+        // 可变参数 -> 字符串
+        char *str;
+        // 字符串的长度
+        unsigned int l;
+        // 可变参数 -> long long
+        long long num;
+        // 可变参数 -> unsigned long long
+        unsigned long long unum;
+
+        // 判断是否是 % 开头
         switch (*f) {
             case '%':
+                // % 的下一个字符
                 next = *(f + 1);
                 f++;
+
+                // 判断类型
                 switch (next) {
                     case 's':
                     case 'S':
+                        // 当前的字符串
                         str = va_arg(ap, char*);
+
+                        // 根据是 s 还是 S, 决定是使用 strlen 还是 sdslen
                         l = (next == 's') ? strlen(str) : sdslen(str);
+
+                        // 如果空间不够需要扩容
                         if (sh->free < l) {
                             s = sdsMakeRoomFor(s, l);
                             sh = (void *) (s - (sizeof(struct sdshdr)));
                         }
+
+                        // 复制到 sds 中
                         memcpy(s + i, str, l);
+
+                        // 设置已使用长度和空闲长度
                         sh->len += l;
                         sh->free -= l;
+
+                        // 移动起始位置
                         i += l;
+
                         break;
                     case 'i':
                     case 'I':
-                        if (next == 'i')
+                        // 根据是 i 还是 I, 决定是 int 还是 long long
+                        if (next == 'i') {
                             num = va_arg(ap, int);
-                        else
+                        } else {
                             num = va_arg(ap, long long);
+                        }
+
+                        // 不用花括号会提示变量重复定义
                         {
+                            // 通过 sdsll2str 将数字进行转换, 保存到 buf 数组中
                             char buf[SDS_LLSTR_SIZE];
                             l = sdsll2str(buf, num);
+
+                            // 如果长度不够, 需要先扩容
                             if (sh->free < l) {
                                 s = sdsMakeRoomFor(s, l);
                                 sh = (void *) (s - (sizeof(struct sdshdr)));
                             }
+
+                            // 复制到 sds 中
                             memcpy(s + i, buf, l);
+
+                            // 设置已使用长度和空闲长度
                             sh->len += l;
                             sh->free -= l;
+
+                            // 移动指针
                             i += l;
                         }
+
                         break;
                     case 'u':
                     case 'U':
-                        if (next == 'u')
+                        // 根据是 u 还是 U, 决定是 unsigned int 还是 unsigned long long
+                        if (next == 'u') {
                             unum = va_arg(ap, unsigned int);
-                        else
+                        } else {
                             unum = va_arg(ap, unsigned long long);
+                        }
+
                         {
+                            // 通过 sdsull2str 对数字进行转换并保存到 buf 中
                             char buf[SDS_LLSTR_SIZE];
                             l = sdsull2str(buf, unum);
+
+                            // 如果长度不够, 需要先扩容
                             if (sh->free < l) {
                                 s = sdsMakeRoomFor(s, l);
                                 sh = (void *) (s - (sizeof(struct sdshdr)));
                             }
+
+                            // 复制到 sds 中
                             memcpy(s + i, buf, l);
+
+                            // 设置已使用长度和空闲长度
                             sh->len += l;
                             sh->free -= l;
+
+                            // 移动指针
                             i += l;
                         }
                         break;
-                    default: /* Handle %% and generally %<unknown>. */
+                    default:
+                        // 处理 %% 或者是其他不支持字符的情况
                         s[i++] = next;
                         sh->len += 1;
                         sh->free -= 1;
@@ -671,6 +764,7 @@ sds sdscatfmt(sds s, char const *fmt, ...) {
                 }
                 break;
             default:
+                // 不是 % 就继续往后走
                 s[i++] = *f;
                 sh->len += 1;
                 sh->free -= 1;
@@ -680,7 +774,7 @@ sds sdscatfmt(sds s, char const *fmt, ...) {
     }
     va_end(ap);
 
-    /* Add null-term */
+    // 添加 \0
     s[i] = '\0';
     return s;
 }
