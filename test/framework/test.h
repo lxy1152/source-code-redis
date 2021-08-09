@@ -64,7 +64,11 @@ void assertEqualForString(char *testName, char *description, const char *result,
  * @param result 结果
  * @param expected 预期结果
  */
-void assertNotEqualForString(char *testName, char *description, char *result, char *expected);
+void assertNotEqualForString(char *testName, char *description, const char *result, const char *expected);
+
+void assertEqualForSds(char *testName, char *description, sds result, sds expected);
+
+void assertNotEqualForSds(char *testName, char *description, sds result, sds expected);
 
 /**
  * 打印测试结果

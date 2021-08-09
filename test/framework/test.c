@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <sds.h>
 #include "test.h"
 #include "stdio.h"
 #include "string.h"
@@ -64,7 +65,7 @@ void assertNotEqualForNumber(char *testName, char *description, size_t result, s
  * @param expected 预期结果
  */
 void assertEqualForString(char *testName, char * description, const char *result, const char *expected) {
-    testInCondition(testName, description, result != expected);
+    testInCondition(testName, description, strcmp(result, expected) == 0);
 }
 
 /**
@@ -75,8 +76,16 @@ void assertEqualForString(char *testName, char * description, const char *result
  * @param result 结果
  * @param expected 预期结果
  */
-void assertNotEqualForString(char *testName, char *description, char *result, char *expected) {
-    testInCondition(testName, description, result != expected);
+void assertNotEqualForString(char *testName, char *description, const char *result, const char *expected) {
+    testInCondition(testName, description, strcmp(result, expected) != 0);
+}
+
+void assertEqualForSds(char *testName, char *description, sds result, sds expected) {
+    testInCondition(testName, description, sdscmp(result, expected) == 0);
+}
+
+void assertNotEqualForSds(char *testName, char *description, sds result, sds expected) {
+    testInCondition(testName, description, sdscmp(result, expected) != 0);
 }
 
 /**
