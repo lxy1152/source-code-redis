@@ -21,7 +21,14 @@ void testInCondition(char *testName, char *description, int expression) {
         totalTestNumber++;
         printf("%d - %s: \n", totalTestNumber, testName);
     }
-    printf("  - %s: ", description);
+
+    int tmp = totalTestNumber;
+    while (tmp != 0) {
+        printf(" ");
+        tmp /= 10;
+    }
+
+    printf(" - %s: ", description);
     if (expression) {
         printf(COLOR_BLUE"PASSED\n"COLOR_NONE);
     } else {
