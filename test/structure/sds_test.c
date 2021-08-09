@@ -11,13 +11,23 @@
  */
 void printSdsHdrInfo(sds string, char *description) {
     if (printFlag) {
-        struct sdshdr *sh = (void *) (string - (sizeof(struct sdshdr)));
+        struct sdshdr *sh = getSdsHdr(string);
         printf(COLOR_YELLOW"  - print sdshdr info before %s: len: %u, free: %u, buf: %s\n"COLOR_NONE,
                description,
                sh->len,
                sh->free,
                sh->buf);
     }
+}
+
+/**
+ * 获取指定 sds 的头信息
+ *
+ * @param string sds
+ * @return 头信息
+ */
+struct sdshdr *getSdsHdr(sds string) {
+    return (void *) (string - (sizeof(struct sdshdr)));
 }
 
 /**
@@ -61,7 +71,7 @@ void sdsDupTest() {
     char *testName = "sdsDupTest";
     sds string = sdsnew("redis");
     sds copy = sdsdup(string);
-    assertNotEqualForString(testName, "compare sds's copy'", copy, string);
+    assertNotEqualForNumber(testName, "compare sds's copy'", copy, string);
 }
 
 /**
@@ -88,7 +98,7 @@ void sdsClearTest() {
     assertEqualForNumber(testName, "compare len", sdslen(string), 0);
     assertEqualForNumber(testName, "compare free", sdsavail(string), 5);
 
-    struct sdshdr *sh = (void *) (string - (sizeof(struct sdshdr)));
+    struct sdshdr *sh = getSdsHdr(string);
     char expected[5] = "\0edis";
     size_t free = sh->free;
     int digit = 0;
@@ -151,6 +161,164 @@ void sdsAllocSizeTest() {
     assertEqualForNumber(testName, "compare allocSize", sdsAllocSize(string), 19);
 }
 
+/**
+ * sdsIncrLen 函数测试
+ */
+void sdsIncrLenTest() {
+    char *testName = "sdsIncrLenTest";
+    sds string = sdsnew("redis");
+
+    // 要往 sds 中追加的字符串
+    char buffer[] = {'1', '2', '3', '4', '5'};
+    // 数组长度
+    int bufferSize = sizeof(buffer) / sizeof(buffer[0]);
+    // sds 扩容
+    string = sdsMakeRoomFor(string, bufferSize);
+
+    struct sdshdr *sdshdr = getSdsHdr(string);
+
+    assertEqualForString(testName, "compare buf before append", sdshdr->buf, "redis");
+    // 追加字符串
+    int start = 5;
+    for (int i = start; i < start + bufferSize; ++i) {
+        *(string + i) = buffer[i - start];
+    }
+    assertEqualForString(testName, "compare buf after append", sdshdr->buf, "redis12345");
+
+    // 比较增加前与增加后的 sds 长度
+    assertEqualForNumber(testName, "compare len before using sdsIncrLen to increase", sdshdr->len, 5);
+    sdsIncrLen(string, bufferSize);
+    assertEqualForNumber(testName, "compare len after using sdsIncrLen to increase", sdshdr->len, 10);
+
+    // 因为减少前的长度上面已经展示过了, 所以不需要重复判断
+    // 比较减少后的 sds 长度
+    sdsIncrLen(string, -bufferSize);
+    assertEqualForNumber(testName, "compare len after using sdsIncrLen to decrease", sdshdr->len, 5);
+}
+
+/**
+ * sdsgrowzero 函数测试
+ */
+void sdsGrowZeroTest() {
+    char *testName = "sdsGrowZeroTest";
+
+    sds string = sdsnew("redis");
+
+    struct sdshdr *sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len before grow", sdshdr->len, 5);
+    assertEqualForNumber(testName, "compare free before grow", sdshdr->free, 0);
+    string = sdsgrowzero(string, 10);
+    sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len after grow", sdshdr->len, 10);
+    assertEqualForNumber(testName, "compare free after grow", sdshdr->free, 10);
+}
+
+/**
+ * sdscatlen 函数测试
+ */
+void sdsCatLenTest() {
+    char *testName = "sdsCatLenTest";
+
+    sds string = sdsnew("redis");
+
+    struct sdshdr *sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len before using sdscatlen", sdshdr->len, 5);
+    assertEqualForNumber(testName, "compare free before using sdscatlen", sdshdr->free, 0);
+    string = sdscatlen(string, "123456", 5);
+    sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len after using sdscatlen", sdshdr->len, 10);
+    assertEqualForNumber(testName, "compare free after using sdscatlen", sdshdr->free, 10);
+
+    assertEqualForString(testName, "compare buf before using sdscatlen", sdshdr->buf, "redis12345");
+    string = sdscatlen(string, "abc\0d", 5);
+    sdshdr = getSdsHdr(string);
+    assertEqualForString(testName, "compare buf after using sdscatlen", sdshdr->buf, "redis12345abc");
+}
+
+/**
+ * sdscat 函数测试
+ */
+void sdsCatTest() {
+    char *testName = "sdsCatTest";
+
+    sds string = sdsnew("redis");
+
+    struct sdshdr *sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len before using sdscat", sdshdr->len, 5);
+    assertEqualForNumber(testName, "compare free before using sdscat", sdshdr->free, 0);
+    string = sdscat(string, "12345\0bc");
+    sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len after using sdscat", sdshdr->len, 10);
+    assertEqualForNumber(testName, "compare free after using sdscat", sdshdr->free, 10);
+}
+
+/**
+ * sdscatsds 函数测试
+ */
+void sdsCatSdsTest() {
+    char *testName = "sdsCatSdsTest";
+
+    sds string = sdsnew("redis");
+
+    struct sdshdr *sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len before using sdscatsds", sdshdr->len, 5);
+    assertEqualForNumber(testName, "compare free before using sdscatsds", sdshdr->free, 0);
+    string = sdscatsds(string, sdsnewlen("12345", 10));
+    sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len after using sdscatsds", sdshdr->len, 15);
+    assertEqualForNumber(testName, "compare free after using sdscatsds", sdshdr->free, 15);
+}
+
+/**
+ * sdscpylen 函数测试
+ */
+void sdsCpyLenTest() {
+    char *testName = "sdsCpyLenTest";
+
+    sds string = sdsnew("redis");
+
+    struct sdshdr *sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len before using sdscpylen", sdshdr->len, 5);
+    assertEqualForNumber(testName, "compare free before using sdscpylen", sdshdr->free, 0);
+    assertEqualForString(testName, "compare buf before using sdscpylen", sdshdr->buf, "redis");
+    string = sdscpylen(string, "0123456789", 10);
+    sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len after using sdscpylen", sdshdr->len, 10);
+    assertEqualForNumber(testName, "compare free after using sdscpylen", sdshdr->free, 10);
+    assertEqualForString(testName, "compare buf after using sdscpylen", sdshdr->buf, "0123456789");
+}
+
+/**
+ * sdscpy 函数测试
+ */
+void sdsCpyTest() {
+    char *testName = "sdsCpyTest";
+
+    sds string = sdsnew("redis");
+
+    struct sdshdr *sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len before using sdscpy", sdshdr->len, 5);
+    assertEqualForNumber(testName, "compare free before using sdscpy", sdshdr->free, 0);
+    assertEqualForString(testName, "compare buf before using sdscpy", sdshdr->buf, "redis");
+    string = sdscpy(string, "0123456789\0abc");
+    sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len after sdscpy", sdshdr->len, 10);
+    assertEqualForNumber(testName, "compare free after sdscpy", sdshdr->free, 10);
+    assertEqualForString(testName, "compare buf after sdscpy", sdshdr->buf, "0123456789");
+}
+
+void sdsFromLongLongTest() {
+    char *testName = "sdsFromLongLongTest";
+
+    long long value = 2147483648;
+    sds string = sdsfromlonglong(value);
+
+    struct sdshdr *sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len after creating from long long value", sdshdr->len, 10);
+    assertEqualForNumber(testName, "compare free after creating from long long value", sdshdr->free, 0);
+    assertEqualForString(testName, "compare buf after creating from long long value", sdshdr->buf, "2147483648");
+}
+
 int main() {
     // 设置为允许输出调试信息
     setPrintFlag(1);
@@ -165,6 +333,14 @@ int main() {
     sdsMakeRoomForTest();
     sdsRemoveFreeSpaceTest();
     sdsAllocSizeTest();
+    sdsIncrLenTest();
+    sdsGrowZeroTest();
+    sdsCatLenTest();
+    sdsCatTest();
+    sdsCatSdsTest();
+    sdsCpyLenTest();
+    sdsCpyTest();
+    sdsFromLongLongTest();
 
     // 输出测试结果
     printTestReport();

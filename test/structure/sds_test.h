@@ -21,6 +21,14 @@ void setPrintFlag(size_t flag);
 void printSdsHdrInfo(sds string, char *description);
 
 /**
+ * 获取指定 sds 的头信息
+ *
+ * @param string sds
+ * @return 头信息
+ */
+struct sdshdr *getSdsHdr(sds string);
+
+/**
  * 设置是否输出调试信息
  *
  * @param flag 是否输出
