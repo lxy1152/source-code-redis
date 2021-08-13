@@ -29,7 +29,6 @@
  */
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
@@ -617,9 +616,9 @@ sds sdscatprintf(sds s, const char *fmt, ...) {
  * - %u: 无符号 整型
  * - %U: 无符号 64 位整型(unsigned long long, uint64_t)
  * - %%: 符号 %
- * @param s
- * @param fmt
- * @param ...
+ * @param s sds
+ * @param fmt printf 格式的字符串
+ * @param ... 参数列表
  * @return 按照指定格式拼接生成的 sds
  */
 sds sdscatfmt(sds s, char const *fmt, ...) {
