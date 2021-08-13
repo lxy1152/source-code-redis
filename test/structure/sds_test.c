@@ -307,6 +307,9 @@ void sdsCpyTest() {
     assertEqualForString(testName, "compare buf after sdscpy", sdshdr->buf, "0123456789");
 }
 
+/**
+ * sdsfromlonglong 函数测试
+ */
 void sdsFromLongLongTest() {
     char *testName = "sdsFromLongLongTest";
 
@@ -317,6 +320,176 @@ void sdsFromLongLongTest() {
     assertEqualForNumber(testName, "compare len after creating from long long value", sdshdr->len, 10);
     assertEqualForNumber(testName, "compare free after creating from long long value", sdshdr->free, 0);
     assertEqualForString(testName, "compare buf after creating from long long value", sdshdr->buf, "2147483648");
+}
+
+/**
+ * sdscatprintf 函数测试
+ */
+void sdsCatPrintfTest() {
+    char *testName = "sdsCatPrintfTest";
+
+    sds string = sdsnew("redis");
+    string = sdscatprintf(string, " number is %d", 10);
+
+    struct sdshdr *sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len after using sdscatprintf", sdshdr->len, 18);
+    assertEqualForNumber(testName, "compare free after using sdscatprintf", sdshdr->free, 18);
+    assertEqualForString(testName, "compare buf after using sdscatprintf", sdshdr->buf, "redis number is 10");
+}
+
+/**
+ * sdscatfmt 函数测试
+ */
+void sdsCatFmtTest() {
+    char *testName = "sdsCatFmtTest";
+
+    sds string = sdsempty();
+    string = sdscatfmt(string, "%s", "hello ");
+    string = sdscatfmt(string, "%S", sdsnew("world "));
+    string = sdscatfmt(string, "%i", 123);
+    string = sdscatfmt(string, "%s", " ");
+    string = sdscatfmt(string, "%I", -123456778990977);
+    string = sdscatfmt(string, "%s", " ");
+    string = sdscatfmt(string, "%u", -123);
+    string = sdscatfmt(string, "%s", " ");
+    string = sdscatfmt(string, "%U", 87697879783746378);
+    string = sdscatfmt(string, "%s", " ");
+    string = sdscatfmt(string, "%%", "123%%");
+    string = sdscatfmt(string, "%s", " ");
+    string = sdscatfmt(string, "%a", "mciujli");
+
+    struct sdshdr *sdshdr = getSdsHdr(string);
+    assertEqualForString(testName, "compare buf after using sdscatfmt",
+                         sdshdr->buf, "hello world 123 -123456778990977 4294967173 87697879783746378 % a");
+}
+
+/**
+ * sdstrim 函数测试
+ */
+void sdsTrimTest() {
+    char *testName = "sdsTrimTest";
+
+    sds string = sdsnew("_+_foo_+_bar_+_");
+    string = sdstrim(string, "_+_");
+    struct sdshdr *sdshdr = getSdsHdr(string);
+    assertEqualForString(testName, "compare buf after using sdstrim", sdshdr->buf, "foo_+_bar");
+}
+
+/**
+ * sdsrange 函数测试
+ */
+void sdsRangeTest() {
+    char *testName = "sdsRangeTest";
+
+    sds string = sdsnew("redis");
+    sdsrange(string, 1, 3);
+    struct sdshdr *sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len after using sdsrange(1, 3)", sdshdr->len, 3);
+    assertEqualForNumber(testName, "compare free after using sdsrange(1, 3)", sdshdr->free, 2);
+    assertEqualForString(testName, "compare buf after using sdsrange(1, 3)", sdshdr->buf, "edi");
+
+    // 由于直接修改了原指针, 所以需要重新创建 sds
+    // 注意: 这种情况会直接清空 sds
+    string = sdsnew("redis");
+    sdsrange(string, 3, 1);
+    sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len after using sdsrange(3, 1)", sdshdr->len, 0);
+    assertEqualForNumber(testName, "compare free after using sdsrange(3, 1)", sdshdr->free, 5);
+    assertEqualForString(testName, "compare buf after using sdsrange(3, 1)", sdshdr->buf, "");
+
+    string = sdsnew("redis");
+    sdsrange(string, 3, -1);
+    sdshdr = getSdsHdr(string);
+    assertEqualForNumber(testName, "compare len after using sdsrange(3, -1)", sdshdr->len, 2);
+    assertEqualForNumber(testName, "compare free after using sdsrange(3, -1)", sdshdr->free, 3);
+    assertEqualForString(testName, "compare buf after using sdsrange(3, -1)", sdshdr->buf, "is");
+}
+
+/**
+ * sdstolower 函数测试
+ */
+void sdsToLowerTest() {
+    char *testName = "sdsToLowerTest";
+
+    sds string = sdsnew("ReDiS");
+    sdstolower(string);
+    struct sdshdr *sdshdr = getSdsHdr(string);
+    assertEqualForString(testName, "compare buf after using sdstolower", sdshdr->buf, "redis");
+}
+
+/**
+ * sdstoupper 函数测试
+ */
+void sdsToUpperTest() {
+    char *testName = "sdsToUpperTest";
+
+    sds string = sdsnew("ReDiS");
+    sdstoupper(string);
+    struct sdshdr *sdshdr = getSdsHdr(string);
+    assertEqualForString(testName, "compare buf after using sdstoupper", sdshdr->buf, "REDIS");
+}
+
+/**
+ * sdscmp 函数测试
+ */
+void sdsCmpTest() {
+    char *testName = "sdsCmpTest";
+
+    sds string = sdsnew("redis");
+    sds string1 = sdsnew("redis1");
+    assertEqualForNumber(testName, "compare redis and redis1", sdscmp(string, string1), -1);
+    string1 = sdsnew("redis");
+    assertEqualForNumber(testName, "compare redis and redis", sdscmp(string, string1), 0);
+}
+
+/**
+ * sdssplitlen 函数测试
+ */
+void sdsSplitLenTest() {
+    char *testName = "sdsSplitLenTest";
+
+    int count = 0;
+    sds *array = sdssplitlen("foo_+_bar_+_foo", 15, "_+_", 3, &count);
+    assertEqualForString(testName, "compare part one after using sdssplitlen", array[0], "foo");
+    assertEqualForString(testName, "compare part two after using sdssplitlen", array[1], "bar");
+    assertEqualForString(testName, "compare part three after using sdssplitlen", array[2], "foo");
+}
+
+/**
+ * sdscatrepr 函数测试
+ */
+void sdsCatReprTest() {
+    char *testName = "sdsCatReprTest";
+
+    sds string = sdscatrepr(sdsempty(), "test\n\r\a\t\band\"hello\"", 19);
+    struct sdshdr *sdshdr = getSdsHdr(string);
+    assertEqualForString(testName, "compare buf after using sdscatrepr", sdshdr->buf,
+                         "\"test\\n\\r\\a\\t\\band\\\"hello\\\"\"");
+}
+
+/**
+ * sdssplitargs 函数测试
+ */
+void sdsSplitArgsTest() {
+    char *testName = "sdsSplitArgsTest";
+
+    int count = 0;
+    sds *array = sdssplitargs("timeout: 100\n key: \"foobar\"", &count);
+    assertEqualForString(testName, "compare part one after using sdssplitargs", array[0], "timeout:");
+    assertEqualForString(testName, "compare part two after using sdssplitargs", array[1], "100");
+    assertEqualForString(testName, "compare part three after using sdssplitargs", array[2], "key:");
+    assertEqualForString(testName, "compare part four after using sdssplitargs", array[3], "foobar");
+}
+
+/**
+ * sdsmapchars 函数测试
+ */
+void sdsMapCharsTest() {
+    char *testName = "sdsMapCharsTest";
+
+    sds string = sdsmapchars(sdsnew("rhhdwws"), "hw", "ei", 2);
+    struct sdshdr *sdshdr = getSdsHdr(string);
+    assertEqualForString(testName, "compare buf after using sdsmapchars", sdshdr->buf, "reediis");
 }
 
 int main() {
@@ -341,6 +514,17 @@ int main() {
     sdsCpyLenTest();
     sdsCpyTest();
     sdsFromLongLongTest();
+    sdsCatPrintfTest();
+    sdsCatFmtTest();
+    sdsTrimTest();
+    sdsRangeTest();
+    sdsToLowerTest();
+    sdsToUpperTest();
+    sdsCmpTest();
+    sdsSplitLenTest();
+    sdsCatReprTest();
+    sdsSplitArgsTest();
+    sdsMapCharsTest();
 
     // 输出测试结果
     printTestReport();
