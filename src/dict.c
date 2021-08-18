@@ -33,6 +33,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
 #include <sys/time.h>
@@ -800,18 +801,34 @@ dictIterator *dictGetSafeIterator(dict *d) {
     return i;
 }
 
+/**
+ * 获取下一个 entry
+ *
+ * @param iter 迭代器
+ * @return 下一个 entry
+ */
 dictEntry *dictNext(dictIterator *iter) {
     while (1) {
         if (iter->entry == NULL) {
+            // 获取哈希表
             dictht *ht = &iter->d->ht[iter->table];
+
+            // 如果是刚开始遍历第一个哈希表
             if (iter->index == -1 && iter->table == 0) {
-                if (iter->safe)
+                // 对于安全的迭代器, 把数量加一
+                // 对于不安全的迭代器, 生成字典指纹
+                if (iter->safe) {
                     iter->d->iterators++;
-                else
+                } else {
                     iter->fingerprint = dictFingerprint(iter->d);
+                }
             }
+
+            // 索引加一
             iter->index++;
+            // 如果这个哈希表已经遍历完了
             if (iter->index >= (long) ht->size) {
+                // 如果哈希表正在 rehash, 继续遍历第二个哈希表
                 if (dictIsRehashing(iter->d) && iter->table == 0) {
                     iter->table++;
                     iter->index = 0;
@@ -820,13 +837,14 @@ dictEntry *dictNext(dictIterator *iter) {
                     break;
                 }
             }
+            // 设置当前遍历到的 entry
             iter->entry = ht->table[iter->index];
         } else {
             iter->entry = iter->nextEntry;
         }
+
         if (iter->entry) {
-            /* We need to save the 'next' here, the iterator user
-             * may delete the entry we are returning. */
+            // 需要保存 next, 因为这个节点可能被调用方删除
             iter->nextEntry = iter->entry->next;
             return iter->entry;
         }
@@ -834,82 +852,102 @@ dictEntry *dictNext(dictIterator *iter) {
     return NULL;
 }
 
+/**
+ * 释放迭代器
+ *
+ * @param iter 迭代器
+ */
 void dictReleaseIterator(dictIterator *iter) {
     if (!(iter->index == -1 && iter->table == 0)) {
-        if (iter->safe)
+        // 对于安全的迭代器需要减少迭代器数量
+        // 对于不安全的迭代器需要验证指纹是否匹配
+        if (iter->safe) {
             iter->d->iterators--;
-        else {
-
+        } else if (iter->fingerprint != dictFingerprint(iter->d)) {
+            printf("\033[0;31mfingerprints do not match\033[0m\n");
+            // 将一个负地址位置的值设置为 x, 这显然是无法执行的
+            // 这会触发 SIGSEGV 信号
+            *((char *) -1) = 'x';
         }
-        // assert(iter->fingerprint == dictFingerprint(iter->d));
     }
     zfree(iter);
 }
 
-/* Return a random entry from the hash table. Useful to
- * implement randomized algorithms */
+/**
+ * 从哈希表中返回一个随机的 entry
+ *
+ * @param d 字典
+ * @return entry
+ */
 dictEntry *dictGetRandomKey(dict *d) {
-    dictEntry *he, *orighe;
-    unsigned int h;
-    int listlen, listele;
+    // 哈希表是空的
+    if (dictSize(d) == 0) {
+        return NULL;
+    }
+    // 如果正处于 rehash, 先进行一次 rehash
+    if (dictIsRehashing(d)) {
+        _dictRehashStep(d);
+    }
 
-    if (dictSize(d) == 0) return NULL;
-    if (dictIsRehashing(d)) _dictRehashStep(d);
+    // 随机获取的那个 entry
+    dictEntry *he;
+    // 索引
+    unsigned int h;
+
     if (dictIsRehashing(d)) {
         do {
-            /* We are sure there are no elements in indexes from 0
-             * to rehashidx-1 */
-            h = d->rehashidx + (random() % (d->ht[0].size +
-                                            d->ht[1].size -
-                                            d->rehashidx));
-            he = (h >= d->ht[0].size) ? d->ht[1].table[h - d->ht[0].size] :
-                 d->ht[0].table[h];
+            // rehash 的时候 0 ~ rehashidx - 1 是没有元素的
+            h = d->rehashidx + (random() % (d->ht[0].size + d->ht[1].size - d->rehashidx));
+            // 根据当前 rehash 的程度, 选择从哪个哈希表中取数据
+            he = (h >= d->ht[0].size) ? d->ht[1].table[h - d->ht[0].size] : d->ht[0].table[h];
         } while (he == NULL);
     } else {
+        // 非 rehash 时直接从第一个哈希表中随机获取
         do {
             h = random() & d->ht[0].sizemask;
             he = d->ht[0].table[h];
         } while (he == NULL);
     }
 
-    /* Now we found a non empty bucket, but it is a linked
-     * list and we need to get a random element from the list.
-     * The only sane way to do so is counting the elements and
-     * select a random index. */
-    listlen = 0;
-    orighe = he;
+    // 现在只是找到了一个链表, 需要从这个链表中随机获取一个节点
+    // 链表长度
+    int listlen = 0;
+    // 链表的头节点
+    dictEntry *orighe = he;
+    // 计算链表长度
     while (he) {
         he = he->next;
         listlen++;
     }
-    listele = random() % listlen;
+    // 计算随机索引
+    int listele = random() % listlen;
+    // 根据索引获取那个节点
     he = orighe;
-    while (listele--) he = he->next;
+    while (listele--) {
+        he = he->next;
+    }
     return he;
 }
 
-/* This function samples the dictionary to return a few keys from random
- * locations.
+/**
+ * 这个函数会返回字典中的一些随机键, 但不保证:
+ * 1. 返回的键的数量一定等于指定的数量 count
+ * 2. 都是无重复的键
+ * 只是会尽力去避免.
  *
- * It does not guarantee to return all the keys specified in 'count', nor
- * it does guarantee to return non-duplicated elements, however it will make
- * some effort to do both things.
+ * 返回的 entry 保存在参数 des 中, 所以调用方需要保证 des 有足够的空间来保存.
+ * des 中返回的个数并不一定就等于 count, 有可能哈希表压根就没有这么多元素, 或
+ * 者是按照查询的步骤查不出这么多的元素.
  *
- * Returned pointers to hash table entries are stored into 'des' that
- * points to an array of dictEntry pointers. The array must have room for
- * at least 'count' elements, that is the argument we pass to the function
- * to tell how many random elements we need.
+ * 注意:
+ * 1. 这个函数适合于某些需要连续元素的样本的算法, 但不保证它们有良好的分布
+ * 2. 这个函数比 dictGetRandomKey 要快
  *
- * The function returns the number of items stored into 'des', that may
- * be less than 'count' if the hash table has less than 'count' elements
- * inside, or if not enough elements were found in a reasonable amount of
- * steps.
- *
- * Note that this function is not suitable when you need a good distribution
- * of the returned items, but only when you need to "sample" a given number
- * of continuous elements to run some kind of algorithm or to produce
- * statistics. However the function is much faster than dictGetRandomKey()
- * at producing N elements. */
+ * @param d 字典
+ * @param des 随机获取的一些 entry
+ * @param count 期望的个数
+ * @return 实际返回的个数
+ */
 unsigned int dictGetSomeKeys(dict *d, dictEntry **des, unsigned int count) {
     unsigned int j; /* internal hash table id, 0 or 1. */
     unsigned int tables; /* 1 or 2 tables? */
