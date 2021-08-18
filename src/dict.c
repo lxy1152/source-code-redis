@@ -949,48 +949,54 @@ dictEntry *dictGetRandomKey(dict *d) {
  * @return 实际返回的个数
  */
 unsigned int dictGetSomeKeys(dict *d, dictEntry **des, unsigned int count) {
-    unsigned int j; /* internal hash table id, 0 or 1. */
-    unsigned int tables; /* 1 or 2 tables? */
-    unsigned int stored = 0, maxsizemask;
-    unsigned int maxsteps;
-
-    if (dictSize(d) < count) count = dictSize(d);
-    maxsteps = count * 10;
-
-    /* Try to do a rehashing work proportional to 'count'. */
-    for (j = 0; j < count; j++) {
-        if (dictIsRehashing(d))
+    // count 不可以比哈希表当前的大小还要大
+    if (dictSize(d) < count) {
+        count = dictSize(d);
+    }
+    // 进行 rehash
+    for (int j = 0; j < count; j++) {
+        if (dictIsRehashing(d)) {
             _dictRehashStep(d);
-        else
+        } else {
             break;
+        }
+    }
+    // 要遍历一个还是两个哈希表
+    unsigned int tables = dictIsRehashing(d) ? 2 : 1;
+    // 取掩码
+    unsigned int maxsizemask = d->ht[0].sizemask;
+    if (tables > 1 && maxsizemask < d->ht[1].sizemask) {
+        maxsizemask = d->ht[1].sizemask;
     }
 
-    tables = dictIsRehashing(d) ? 2 : 1;
-    maxsizemask = d->ht[0].sizemask;
-    if (tables > 1 && maxsizemask < d->ht[1].sizemask)
-        maxsizemask = d->ht[1].sizemask;
-
-    /* Pick a random point inside the larger table. */
+    // 随便取一个随机索引
     unsigned int i = random() & maxsizemask;
-    unsigned int emptylen = 0; /* Continuous empty entries so far. */
+    // 连续空桶的数量
+    unsigned int emptylen = 0;
+    // 实际随机获取的 entry 的数量
+    unsigned int stored = 0;
+    // 最大执行次数
+    unsigned int maxsteps = count * 10;
+
     while (stored < count && maxsteps--) {
-        for (j = 0; j < tables; j++) {
-            /* Invariant of the dict.c rehashing: up to the indexes already
-             * visited in ht[0] during the rehashing, there are no populated
-             * buckets, so we can skip ht[0] for indexes between 0 and idx-1. */
+        for (int j = 0; j < tables; j++) {
+            // 由于存在 rehash, 如果第一个哈希表的 0 ~ rehashidx - 1 之间的索引
+            // 位置都是空的, 直接跳过
             if (tables == 2 && j == 0 && i < (unsigned int) d->rehashidx) {
-                /* Moreover, if we are currently out of range in the second
-                 * table, there will be no elements in both tables up to
-                 * the current rehashing index, so we jump if possible.
-                 * (this happens when going from big to small table). */
-                if (i >= d->ht[1].size) i = d->rehashidx;
+                // 如果越界了, 就重新设置到 rehashidx 处
+                if (i >= d->ht[1].size) {
+                    i = d->rehashidx;
+                }
                 continue;
             }
-            if (i >= d->ht[j].size) continue; /* Out of range for this table. */
-            dictEntry *he = d->ht[j].table[i];
+            // 越界
+            if (i >= d->ht[j].size) {
+                continue;
+            }
 
-            /* Count contiguous empty buckets, and jump to other
-             * locations if they reach 'count' (with a minimum of 5). */
+            // 取链表
+            dictEntry *he = d->ht[j].table[i];
+            // 如果连续碰见 5 个空桶, 就重新找个别的地方
             if (he == NULL) {
                 emptylen++;
                 if (emptylen >= 5 && emptylen > count) {
@@ -998,27 +1004,37 @@ unsigned int dictGetSomeKeys(dict *d, dictEntry **des, unsigned int count) {
                     emptylen = 0;
                 }
             } else {
+                // 重置 emptylen
                 emptylen = 0;
+                // 把链表保存到 des 中
                 while (he) {
-                    /* Collect all the elements of the buckets found non
-                     * empty while iterating. */
                     *des = he;
                     des++;
                     he = he->next;
                     stored++;
-                    if (stored == count) return stored;
+                    if (stored == count) {
+                        return stored;
+                    }
                 }
             }
         }
+
+        // 重新计算 i
         i = (i + 1) & maxsizemask;
     }
+
+    // des 中实际的个数
     return stored;
 }
 
-/* Function to reverse bits. Algorithm from:
- * http://graphics.stanford.edu/~seander/bithacks.html#ReverseParallel */
+/**
+ * 对 v 进行二进制逆序, 参考: http://graphics.stanford.edu/~seander/bithacks.html#ReverseParallel
+ *
+ * @param v 要翻转的数字
+ * @return 翻转后的数字
+ */
 static unsigned long rev(unsigned long v) {
-    unsigned long s = 8 * sizeof(v); // bit size; must be power of 2
+    unsigned long s = 8 * sizeof(v);
     unsigned long mask = ~0;
     while ((s >>= 1) > 0) {
         mask ^= (mask << s);
