@@ -213,7 +213,7 @@ typedef struct dictIterator {
     /**
      * 当前的遍历是否安全, 如果是 1 表示是安全的, 否则是不安全的.
      * 安全指的是可以在迭代过程中调用 dictAdd, dictFind 或者是
-     * 其他的一些函数. 如果是不安全的, 那么在迭代过程中指可以调用
+     * 其他的一些函数. 如果是不安全的, 那么在迭代过程中只可以调用
      * dictNext 函数.
      */
     int safe;
@@ -242,7 +242,7 @@ typedef void (dictScanFunction)(void *privdata, const dictEntry *de);
 /**
  * 哈希表初始大小
  */
-#define DICT_HT_INITIAL_SIZE     4
+#define DICT_HT_INITIAL_SIZE 4
 
 /**
  * 宏定义
@@ -570,11 +570,11 @@ void dictDisableResize(void);
 int dictRehash(dict *d, int n);
 
 /**
- * 在指定的时间内进行渐进式rehash
+ * 在指定的时间内进行渐进式 rehash
  *
  * @param d 字典
  * @param ms 时间
- * @return rehash 的 entry 的个数
+ * @return 执行次数
  */
 int dictRehashMilliseconds(dict *d, int ms);
 
